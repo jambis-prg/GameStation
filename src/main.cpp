@@ -1,7 +1,19 @@
 #include <stdio.h>
 #include "pico/stdlib.h"
+#include "hardware/adc.h"
 #include <math.h>
 
+#define L3 0
+#define L_X 2
+#define L_Y 4
+
+#define R3 1
+#define R_X 3
+#define R_Y 5
+
+#define ANALOG_MAX_VOLTAGE 3.3f
+#define ANALOG_PIN 28
+#define ANALOG_INPUT 2
 
 #define RS 27
 #define RW 9
@@ -18,6 +30,8 @@
 #define DELAY 5
 
 #define ROWS 8
+
+static const float analog_conversion_factor = 3.3f / (1 << 12);
 
 static const __uint8_t DB_Pins[] = { 10, 21, 11, 20, 12, 19, 13, 18 };
 static __uint8_t buffer[HN * HEIGHT];
@@ -620,12 +634,44 @@ void init_graphic_mode()
     send_command(0x0B, 0);
 }
 
+float get_analog_axis(uint32_t axis)
+{
+    gpio_put(axis, true);
+    float voltage = adc_read() * analog_conversion_factor;
+    float normalized = (voltage / ANALOG_MAX_VOLTAGE) * 2.f - 1.f;
+    gpio_put(axis, false);
+    
+    return normalized;
+}
+
 int main() 
 {
     stdio_init_all(); // Inicializa a comunicação USB
 
     sleep_ms(5000);
+    
+    adc_init();
+    adc_gpio_init(ANALOG_PIN);
+    adc_select_input(ANALOG_INPUT);
 
+    gpio_init(L3);
+    gpio_set_dir(L3, GPIO_IN);
+    gpio_pull_up(L3);
+
+    gpio_init(L_X);
+    gpio_set_dir(L_X, GPIO_OUT);
+    gpio_init(L_Y);
+    gpio_set_dir(L_Y, GPIO_OUT);
+
+    gpio_init(R3);
+    gpio_set_dir(R3, GPIO_IN);
+    gpio_pull_up(R3);
+    
+    gpio_init(R_X);
+    gpio_set_dir(R_X, GPIO_OUT);
+    gpio_init(R_Y);
+    gpio_set_dir(R_Y, GPIO_OUT);
+    
     gpio_init(RS);
     gpio_set_dir(RS, GPIO_OUT);
 
@@ -667,6 +713,8 @@ int main()
     } ball_t;
 
     ball_t ball_1 = {WIDTH / 4, HEIGHT / 2, 1, 1, 5}, ball_2 {3 * WIDTH / 4, HEIGHT / 2, -1, -1, 5};
+
+    float p_x, p_y;
 
     __uint32_t start = millis();
     float accum = 0;
@@ -747,6 +795,20 @@ int main()
             ball_2.vel_y = tmp;
         }
 
+        printf("L_X: %.2f\n", get_analog_axis(L_X));
+        printf("L_Y: %.2f\n", get_analog_axis(L_Y));
+        printf("R_X: %.2f\n", get_analog_axis(R_X));
+        printf("R_Y: %.2f\n", get_analog_axis(R_Y));
+
+        p_x += delta_time * get_analog_axis(L_X) * 10;
+        p_y -= delta_time * get_analog_axis(L_Y) * 10;
+
+        if (p_x < 0) p_x = 0;
+        else if (p_x >= WIDTH) p_x = WIDTH - 1;
+
+        if (p_y < 0) p_y = 0;
+        else if (p_y >= HEIGHT) p_y = HEIGHT - 1;
+
         clear();
         
         draw_circle(ball_1.x, ball_1.y, ball_1.radius);
@@ -765,6 +827,19 @@ int main()
             }
         }
             
+        if (!gpio_get(L3))
+        {
+            draw_character(WIDTH / 4, HEIGHT / 2 - 4, font[21]);
+            draw_character(WIDTH / 4 + 8, HEIGHT / 2 - 4, font[3]);
+        }
+
+        if (!gpio_get(R3))
+        {
+            draw_character(WIDTH * 0.75f, HEIGHT / 2 - 4, font['R' - 'A' + 10]);
+            draw_character(WIDTH * 0.75f + 8, HEIGHT / 2 - 4, font[3]);
+        }
+
+        draw_filled_circle(p_x, p_y, 2);
         show();
 
         accum += delta_time;

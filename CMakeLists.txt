@@ -15,7 +15,7 @@ add_executable(GameStation
 )
 
 # Add pico_stdlib library which aggregates commonly used features
-target_link_libraries(GameStation pico_stdlib)
+target_link_libraries(GameStation pico_stdlib hardware_adc)
 
 pico_enable_stdio_usb(GameStation 1)
 pico_enable_stdio_uart(GameStation 0)
