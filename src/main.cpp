@@ -1,6 +1,8 @@
 #include <stdio.h>
 #include "pico/stdlib.h"
 #include "hardware/adc.h"
+#include "hardware/pwm.h"
+#include "pico/divider.h"
 #include <math.h>
 
 #define L3 0
@@ -14,6 +16,8 @@
 #define ANALOG_MAX_VOLTAGE 3.3f
 #define ANALOG_PIN 28
 #define ANALOG_INPUT 2
+
+#define SPEAKER 6
 
 #define RS 27
 #define RW 9
@@ -30,6 +34,7 @@
 #define DELAY 5
 
 #define ROWS 8
+
 
 static const float analog_conversion_factor = 3.3f / (1 << 12);
 
@@ -403,6 +408,11 @@ uint32_t millis()
     return to_ms_since_boot(get_absolute_time());
 }
 
+uint64_t micro()
+{
+    return to_us_since_boot(get_absolute_time());
+}
+
 void write_byte(__uint8_t byte)
 {
     for(__uint32_t i = 0; i < 8; i++)
@@ -644,11 +654,73 @@ float get_analog_axis(uint32_t axis)
     return normalized;
 }
 
+#define SAMPLES 100
+// Tabela com valores da senoide de 0 a 100%
+uint8_t sine_table[SAMPLES];
+
+void init_sine_table() {
+    for (int i = 0; i < SAMPLES; i++) {
+        float radians = 2.0f * M_PI * ((float)i / (float)SAMPLES);
+        // De -1..1 para 0..100%
+        sine_table[i] = (uint8_t)((sinf(radians) + 1.0f) * 50.0f);
+    }
+}
+
+int32_t pwm_set_freq_duty(uint32_t slice_num, uint32_t chan, uint32_t freq, 
+                          int duty_cycle)
+{
+
+    uint8_t clk_divider = 0;
+    uint32_t wrap = 0;
+    uint32_t clock_div = 0;
+    uint32_t clock = 125000000;
+
+    if(freq < 8 && freq > clock)
+       /* This is the frequency range of generating a PWM 
+       in RP2040 at 125MHz */
+        return -1;
+
+    for(clk_divider = 1; clk_divider < UINT8_MAX; clk_divider++)
+    {
+        /* Find clock_division to fit current frequency */
+        clock_div = div_u32u32( clock, clk_divider );
+        wrap = div_u32u32(clock_div, freq);
+        if (div_u32u32 (clock_div, UINT16_MAX) <= freq && wrap <= UINT16_MAX)
+        {
+            break;
+        }
+    }
+    if(clk_divider < UINT8_MAX)
+    {
+        /* Only considering whole number division */
+        pwm_set_clkdiv_int_frac(slice_num, clk_divider, 0);
+        pwm_set_wrap(slice_num, (uint16_t) wrap);
+        pwm_set_chan_level(slice_num, chan, 
+                          (uint16_t) div_u32u32((((uint16_t)(duty_cycle == 100? 
+                          (wrap + 1) : wrap)) * duty_cycle), 100));
+    }
+    else
+        return -2;
+
+    return 1;
+}
+
 int main() 
 {
     stdio_init_all(); // Inicializa a comunicação USB
+    init_sine_table();
 
     sleep_ms(5000);
+
+    gpio_set_function(SPEAKER, GPIO_FUNC_PWM);
+    uint slice = pwm_gpio_to_slice_num(SPEAKER);
+    uint channel = pwm_gpio_to_channel(SPEAKER);
+    float div = 1.0f; // divisor do clock
+    pwm_set_clkdiv(slice, div);
+
+    pwm_config cfg = pwm_get_default_config();
+    pwm_config_set_clkdiv(&cfg, 4.f);
+    pwm_init(slice, &cfg, true);
     
     adc_init();
     adc_gpio_init(ANALOG_PIN);
@@ -706,7 +778,7 @@ int main()
     init_graphic_mode();
 
     int increment = 0;
-
+    float freq = 60;
     typedef struct _ball
     {
         int x, y, vel_x, vel_y, radius;
@@ -717,12 +789,40 @@ int main()
     float p_x, p_y;
 
     __uint32_t start = millis();
+    uint64_t start_us = micro();
     float accum = 0;
+    uint64_t wave_accum = 0;
+    uint32_t sample_index = 0;
+    bool is_sined = true, r3_pressed = false;
     while (true) 
     {
         __uint32_t end = millis();
         float delta_time = (end - start) / 1000.f;
         start = end;
+
+        uint64_t end_us = micro();
+        uint64_t delta_time_us = (end_us - start_us);
+        start_us = end_us;
+        uint64_t delay_us = 1e6 / (freq * SAMPLES);
+
+        if (is_sined)
+        {
+            wave_accum  += delta_time_us;
+
+            while (wave_accum >= delay_us)
+            {
+                wave_accum -= delay_us;
+                sample_index = (sample_index + 1) % SAMPLES;
+            }
+            pwm_set_freq_duty(slice, channel, freq, sine_table[sample_index]);
+        }
+        else
+        {
+            wave_accum = 0.f;
+            pwm_set_freq_duty(slice, channel, freq, 50);
+        }
+
+        /*
 
         ball_1.x += ball_1.vel_x;
         ball_1.y += ball_1.vel_y;
@@ -795,13 +895,18 @@ int main()
             ball_2.vel_y = tmp;
         }
 
-        printf("L_X: %.2f\n", get_analog_axis(L_X));
-        printf("L_Y: %.2f\n", get_analog_axis(L_Y));
-        printf("R_X: %.2f\n", get_analog_axis(R_X));
+        printf("L_X: %.2f -", get_analog_axis(L_X));
+        printf("L_Y: %.2f -", get_analog_axis(L_Y));
+        printf("R_X: %.2f -", get_analog_axis(R_X));
         printf("R_Y: %.2f\n", get_analog_axis(R_Y));
-
+        printf("FREQ: %u\n", (uint16_t)freq);
+        printf("IS_SINED: %d\n", is_sined);
         p_x += delta_time * get_analog_axis(L_X) * 10;
         p_y -= delta_time * get_analog_axis(L_Y) * 10;
+
+        freq += delta_time * get_analog_axis(R_Y) * 1000;
+        if (freq < 0) freq = 0;
+        else if (freq >= 65535) freq = 65535;
 
         if (p_x < 0) p_x = 0;
         else if (p_x >= WIDTH) p_x = WIDTH - 1;
@@ -837,10 +942,17 @@ int main()
         {
             draw_character(WIDTH * 0.75f, HEIGHT / 2 - 4, font['R' - 'A' + 10]);
             draw_character(WIDTH * 0.75f + 8, HEIGHT / 2 - 4, font[3]);
+            
+            if (!r3_pressed)
+                is_sined = !is_sined;
+
+            r3_pressed = true;
         }
+        else
+            r3_pressed = false;
 
         draw_filled_circle(p_x, p_y, 2);
-        show();
+        //show();
 
         accum += delta_time;
         if (accum > 1.0f)
@@ -848,6 +960,7 @@ int main()
             increment = (increment + 1) % 8;
             accum -= 1.0f;
         }
+        */
     }
 
     return 0;
