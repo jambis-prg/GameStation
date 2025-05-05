@@ -15,5 +15,6 @@ namespace GameStation
     {
         m_end = to_us_since_boot(get_absolute_time());
         m_delta_time = (static_cast<float>(m_end) - static_cast<float>(m_start)) / 1000000.f;
+        m_start = m_end;
     }
 }

@@ -49,10 +49,10 @@ namespace GameStation
     void Input::update()
     {
         s_last_left_sw_state = s_left_sw_state;
-        s_left_sw_state = gpio_get(s_left_sw);
+        s_left_sw_state = !gpio_get(s_left_sw);
 
         s_last_right_sw_state = s_right_sw_state;
-        s_right_sw_state = gpio_get(s_right_sw);
+        s_right_sw_state = !gpio_get(s_right_sw);
     }
 
     float Input::get_analog_axis(AnalogAxis axis)

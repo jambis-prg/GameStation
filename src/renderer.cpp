@@ -25,7 +25,7 @@ namespace GameStation
 
     void Renderer::shutdown()
     {
-        delete s_screen_buffer;
+        delete[] s_screen_buffer;
     }
 
     void Renderer::draw_pixel(int16_t x, int16_t y)

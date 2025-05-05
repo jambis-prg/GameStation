@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include "pico/stdlib.h"
+
 #include <math.h>
 
 #include <lcd.h>
@@ -17,11 +18,11 @@ int main()
     stdio_init_all(); // Inicializa a comunicação USB
 
     sleep_ms(5000);
-    
+
     // RW, RS, EN, RST, CS, { D0, D1, D2, D3, D4, D5, D6, D7 }
     GameStation::LCDPinsConfiguration config(9, 27, 26, 17, 14, { 10, 21, 11, 20, 12, 19, 13, 18 });
     GameStation::LCD::init(WIDTH, HEIGHT, config);
-    
+
     GameStation::Renderer::init(WIDTH, HEIGHT);
 
     // ANALOG_PIN, ANALOG_INPUT, L3, LX, LY, R3, RX, RY
@@ -40,6 +41,8 @@ int main()
 
     float p_x, p_y;
 
+
+
     float accum = 0;
 
     GameStation::Timer timer;
@@ -51,7 +54,7 @@ int main()
 
         ball_1.x += ball_1.vel_x;
         ball_1.y += ball_1.vel_y;
-        
+
         ball_2.x += ball_2.vel_x;
         ball_2.y += ball_2.vel_y;
 
@@ -65,7 +68,7 @@ int main()
             ball_1.x = ball_1.radius;
             ball_1.vel_x *= -1;
         }
-        
+
         if (ball_1.y + ball_1.radius > HEIGHT - 1)
         {
             ball_1.y = HEIGHT - 1 - ball_1.radius;
@@ -87,7 +90,7 @@ int main()
             ball_2.x = ball_2.radius;
             ball_2.vel_x *= -1;
         }
-        
+
         if (ball_2.y + ball_2.radius > HEIGHT - 1)
         {
             ball_2.y = HEIGHT - 1 - ball_2.radius;
@@ -131,7 +134,7 @@ int main()
         else if (p_y >= HEIGHT) p_y = HEIGHT - 1;
 
         GameStation::Renderer::clear();
-        
+
         GameStation::Renderer::draw_circle(ball_1.x, ball_1.y, ball_1.radius);
         GameStation::Renderer::draw_filled_circle(ball_2.x, ball_2.y, ball_2.radius);
 
@@ -147,7 +150,7 @@ int main()
                 y += 8;
             }
         }
-            
+
         if (GameStation::Input::get_switch_down(GameStation::AnalogSide::Left))
         {
             GameStation::Renderer::draw_character(WIDTH / 4, HEIGHT / 2 - 4, default_font[21]);

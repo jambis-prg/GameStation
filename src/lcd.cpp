@@ -1,5 +1,6 @@
 #include <lcd.h>
 #include "pico/stdlib.h"
+#include <stdio.h>
 
 #define DELAY 5
 
@@ -14,7 +15,7 @@ namespace GameStation
     void LCD::init(const uint16_t scrn_w, const uint16_t scrn_h, const LCDPinsConfiguration &pins)
     {
         s_scrnw = scrn_w;
-        s_scrnh = scrn_w;
+        s_scrnh = scrn_h;
         s_hn = s_scrnw / 8;
 
         s_rw = pins.get_rw_pin();
@@ -63,6 +64,7 @@ namespace GameStation
         // Como o HP foi definido como 8 bits para 8 dots aqui deve ser
         // Quantos bytes tem uma linha inteira então se a tela tem
         // 240 dots horizontais enviamos (240 / HP) - 1
+        printf("%d\n", s_hn - 1);
         send_command(CommandType::HN, s_hn - 1);
 
         // Número de dots verticais - 1
@@ -80,7 +82,7 @@ namespace GameStation
     void LCD::write_byte(const uint8_t byte)
     {
         for(uint32_t i = 0; i < s_data_pins.size(); i++)
-            gpio_put(s_data_pins[i], (byte & (1 << i)));
+            gpio_put(s_data_pins[i], (byte & (1 << i)) != 0);
     }
 
     void LCD::send_command(const CommandType command, const uint8_t data)
